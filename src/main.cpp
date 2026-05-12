@@ -59,7 +59,11 @@ int main()
 
 		// SFML events
 		while (const optional event = window.pollEvent()) ui.inputHandler(window, event);
-		ps.PIHandler(ui.getInteracts());
+		
+		// If it's the AI's turn, the AI plays
+		if (ps.getTurn() == Turn::AI) ps.aiTurn();
+		// Else, the player gets to play
+		else ps.PIHandler(ui.getInteracts());
 
 		// Clear window and draw background
 		window.clear();

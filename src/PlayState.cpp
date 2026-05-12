@@ -335,25 +335,7 @@ void PlayState::actAbility(std::shared_ptr<Card> card)
 			else if (ai.getDifficulty() == Difficulty::Smart)
 			{
 				Suit suitToChangeTo;
-				switch (ai.determineBestSuit())
-				{
-				case HEARTS:
-					suitToChangeTo = HEARTS;
-					break;
-				case SPADES:
-					suitToChangeTo = SPADES;
-					break;
-				case DIAMONDS:
-					suitToChangeTo = DIAMONDS;
-					break;
-				case CLUBS:
-					suitToChangeTo = CLUBS;
-					break;
-				default:
-					suitToChangeTo = HEARTS;
-					std::cout << "X - Invalid best suit!\n";
-					break;
-				}
+				suitToChangeTo = ai.getBSuit();
 				pile.addCard(std::make_shared<Card>(1, suitToChangeTo, 0, NOOWNER, BASIC, NONE));
 			}
 		}
@@ -484,12 +466,14 @@ bool PlayState::PIHandler(Interactions interacts)
 	{
 		Debug::log("[PlayState.cpp] Draw interaction received.");
 		playerDraw();
+		turn = Turn::AI;
 		return true;
 	}
 	
 	else if (interacts.playerInteraction == PI::Play)
 	{
 		Debug::log("[PlayState.cpp] Play interaction received.");
+		turn = Turn::AI;
 		return playMCs(interacts.playedCards);
 	}
 
@@ -566,6 +550,47 @@ void PlayState::aiPlay(const std::vector<std::shared_ptr<Card>> cards)
 	for (int i = toPlay.size() - 1; i >= 0; i--)
 	{
 		aiHand.removeCard(toPlay[i]);
+
+		if (toPlay[i]->getAbility() == DRAWABILITY || toPlay[i]->getAbility() == SKIP) turn = Turn::AI;
+		else turn = Turn::Player;
+	}
+}
+
+Suit determineBestSuit(vector<shared_ptr<Card>> heartCards, vector<shared_ptr<Card>> spadeCards, vector<shared_ptr<Card>> clubCards, vector<shared_ptr<Card>> diamondCards)
+{
+	// Determine the bestSuit
+	if (heartCards.size() >= spadeCards.size() &&
+		heartCards.size() >= diamondCards.size() &&
+		heartCards.size() >= clubCards.size())
+	{
+		Debug::log("[AI.cpp] The best suit is Hearts with ", std::to_string(heartCards.size()), " cards.");
+		return HEARTS;
+	}
+	else if (spadeCards.size() >= heartCards.size() &&
+		spadeCards.size() >= diamondCards.size() &&
+		spadeCards.size() >= clubCards.size())
+	{
+		Debug::log("[AI.cpp] The best suit is Spades with ", std::to_string(spadeCards.size()), " cards.");
+		return SPADES;
+	}
+	else if (diamondCards.size() >= heartCards.size() &&
+		diamondCards.size() >= spadeCards.size() &&
+		diamondCards.size() >= clubCards.size())
+	{
+		Debug::log("[AI.cpp] The best suit is Diamonds with ", std::to_string(diamondCards.size()), " cards.");
+		return DIAMONDS;
+	}
+	else if (clubCards.size() >= heartCards.size() &&
+		clubCards.size() >= spadeCards.size() &&
+		clubCards.size() >= diamondCards.size())
+	{
+		Debug::log("[AI.cpp] The best suit is Clubs with ", std::to_string(clubCards.size()), " cards.");
+		return CLUBS;
+	}
+	else
+	{
+		Debug::log("[AI.cpp] The AI doesn't have any playable cards.");
+		return HEARTS;
 	}
 }
 
@@ -576,8 +601,6 @@ void PlayState::aiTurn()
 	
 	bonuses.oneManShow = false;
 	bonuses.oneShotWonder = false;
-	
-	std::cout << "============================\n" << "The AI is thinking...\n" << "============================\n";
 
 	if (ai.isSmoked())
 	{
@@ -595,7 +618,7 @@ void PlayState::aiTurn()
 	}
 	else if (ai.getDifficulty() == Difficulty::Dumb)
 	{
-		// Just plays the first legal card(s), if it can't play anything, just draw.
+		// Just plays the first legal card(s), if it can't play anything, just draws.
 		const std::vector<std::shared_ptr<Card>>& hand = aiHand.getHand();
 		std::vector<std::shared_ptr<Card>> playable;
 		std::vector<std::shared_ptr<Card>> multiPlayable;
@@ -650,11 +673,11 @@ void PlayState::aiTurn()
 		//		1. If Player has Macao (a single card) always play a Draw card.
 		//		2. If Player has Macao but you don't have Draw cards, always change the color.
 
-		ai.getHearts().clear();
-		ai.getSpades().clear();
-		ai.getDiamonds().clear();
-		ai.getClubs().clear();
-		ai.getBest().clear();
+		vector<shared_ptr<Card>> heartsCards;
+		vector<shared_ptr<Card>> spadesCards;
+		vector<shared_ptr<Card>> diamondsCards;
+		vector<shared_ptr<Card>> clubsCards;
+		vector<shared_ptr<Card>> bestCards;
 
 		std::vector<std::shared_ptr<Card>> jokerCards;
 		std::vector<std::shared_ptr<Card>> skipCards;
@@ -671,16 +694,16 @@ void PlayState::aiTurn()
 				switch (aiHand.getHand()[i]->getSuit())
 				{
 				case HEARTS:
-					ai.getHearts().push_back(aiHand.getHand()[i]);
+					heartsCards.push_back(aiHand.getHand()[i]);
 					break;
 				case SPADES:
-					ai.getSpades().push_back(aiHand.getHand()[i]);
+					spadesCards.push_back(aiHand.getHand()[i]);
 					break;
 				case DIAMONDS:
-					ai.getDiamonds().push_back(aiHand.getHand()[i]);
+					diamondsCards.push_back(aiHand.getHand()[i]);
 					break;
 				case CLUBS:
-					ai.getClubs().push_back(aiHand.getHand()[i]);
+					clubsCards.push_back(aiHand.getHand()[i]);
 					break;
 				default:
 					jokerCards.push_back(aiHand.getHand()[i]);
@@ -690,19 +713,23 @@ void PlayState::aiTurn()
 		}
 
 		// Determine the bestSuit (the color with the most cards)
-		switch (ai.determineBestSuit())
+		switch (determineBestSuit(heartsCards, spadesCards, clubsCards, diamondsCards))
 		{
 		case HEARTS:
-			ai.setBest(ai.getHearts());
+			bestCards = move(heartsCards);
+			ai.setBSuit(HEARTS);
 			break;
 		case SPADES:
-			ai.setBest(ai.getSpades());
+			bestCards = move(spadesCards);
+			ai.setBSuit(SPADES);
 			break;
 		case DIAMONDS:
-			ai.setBest(ai.getDiamonds());
+			bestCards = move(diamondsCards);
+			ai.setBSuit(DIAMONDS);
 			break;
 		case CLUBS:
-			ai.setBest(ai.getClubs());
+			bestCards = move(clubsCards);
+			ai.setBSuit(CLUBS);
 			break;
 		// These are here because VSC doesn't have an ignore warning option...
 		case BLACKJOKER:
@@ -718,33 +745,33 @@ void PlayState::aiTurn()
 		}
 
 		// Split the cards of the biggest color based on ability
-		for (int i = 0; i < ai.getBest().size(); i++)
+		for (int i = 0; i < bestCards.size(); i++)
 		{
-			switch (ai.getBest()[i]->getAbility())
+			switch (bestCards[i]->getAbility())
 			{
 			case SKIP:
-				skipCards.push_back(ai.getBest()[i]);
+				skipCards.push_back(bestCards[i]);
 				break;
 			case DRAWABILITY:
-				drawCards.push_back(ai.getBest()[i]);
+				drawCards.push_back(bestCards[i]);
 				break;
 			case COLOR:
-				colorCards.push_back(ai.getBest()[i]);
+				colorCards.push_back(bestCards[i]);
 				break;
 			default:
-				basicCards.push_back(ai.getBest()[i]);
+				basicCards.push_back(bestCards[i]);
 				break;
 			}
 		}
 
 		// ======== BYPASSERS ========
 		// If the Player has Macao, AI should attempt to mess up the Player's lead.
-		if (playerHand.getSize() < 2 && !drawCards.empty()) 
+		if (playerHand.getSize() <= 2 && !drawCards.empty()) 
 		{
 			actAbility(drawCards[0]);
 			aiPlay(drawCards);
 		}
-		else if (playerHand.getSize() < 2 && !colorCards.empty()) 
+		else if (playerHand.getSize() <= 2 && !colorCards.empty()) 
 		{
 			actAbility(colorCards[0]);
 			aiPlay(colorCards);
@@ -776,6 +803,7 @@ void PlayState::aiTurn()
 			if (!(aiDeck.getSize() < 1))
 			{
 				aiHand.addCard(aiDeck.draw());
+				turn = Turn::Player;
 			}
 			else
 			{

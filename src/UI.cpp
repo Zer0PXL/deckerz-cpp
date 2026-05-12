@@ -25,8 +25,9 @@ Interactions UI::getInteracts()
 
 void UI::resetMCs()
 {
-	Debug::log("[UI.cpp] ! - Resetting middleCards...");
+	Debug::log("[UI.cpp] ! - Resetting middleCards... (and buttons)");
 	middleCards.clear();
+	buttons.clear();
 }
 
 Interactions UI::inputHandler(sf::RenderWindow& window, optional<Event> event)
